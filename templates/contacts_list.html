@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Contacts</h1>
+<section>
+    <form action="/contacts/import-csv" method="post" enctype="multipart/form-data">
+        <label for="file">Import contacts via CSV:</label>
+        <input type="file" id="file" name="file" accept=".csv" required>
+        <button type="submit">Upload</button>
+    </form>
+    <p><a href="/contacts/export-csv">Download all contacts as CSV</a></p>
+</section>
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Tags</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for contact in contacts %}
+        <tr>
+            <td>{{ contact.id }}</td>
+            <td>{{ contact.name }}</td>
+            <td>{{ contact.email }}</td>
+            <td>{{ contact.tags }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="muted">No contacts found.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

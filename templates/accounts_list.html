@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Accounts</h1>
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Display Name</th>
+            <th>Email</th>
+            <th>SMTP Host</th>
+            <th>Port</th>
+            <th>SSL</th>
+            <th>TLS</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for account in accounts %}
+        <tr>
+            <td>{{ account.id }}</td>
+            <td>{{ account.display_name }}</td>
+            <td>{{ account.email_address }}</td>
+            <td>{{ account.smtp_host }}</td>
+            <td>{{ account.smtp_port }}</td>
+            <td>{{ account.use_ssl }}</td>
+            <td>{{ account.use_tls }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="muted">No accounts found.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

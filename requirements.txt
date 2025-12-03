@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+alembic
+pydantic
+python-dotenv
+apscheduler
+email-validator
+jinja2
+python-multipart
+pytest
