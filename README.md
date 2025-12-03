@@ -7,33 +7,42 @@ A local-first email automation dashboard built with FastAPI, SQLAlchemy, APSched
 - Dependencies from `requirements.txt`
 - Proton Mail Bridge (or any SMTP service) if you want to send real mail
 
-## Setup
-1. Create and activate a virtual environment.
-2. Install dependencies:
+## Setup (automated)
+1. **Run the setup script** (creates the virtual environment, installs dependencies, and copies `.env.example` to `.env` if missing).
    ```bash
-   pip install -r requirements.txt
+   bash setup.sh
    ```
-3. Copy the example environment file and adjust values:
+   - To start fresh, add `--reset` to remove any existing `.venv` and `.env` first: `bash setup.sh --reset`.
+2. **Activate the virtual environment.**
+   - macOS/Linux:
+     ```bash
+     source .venv/bin/activate
+     ```
+   - Windows (PowerShell):
+     ```powershell
+     .venv\Scripts\Activate.ps1
+     ```
+   - Windows (CMD):
+     ```cmd
+     .venv\Scripts\activate.bat
+     ```
+3. **Start the app.**
    ```bash
-   cp .env.example .env
+   uvicorn protonmailer.main:app --host 127.0.0.1 --port 8000 --reload
    ```
-   Key settings:
+4. **Adjust configuration as needed.** The setup script creates `.env` from `.env.example` when missing. Key settings:
    - `DATABASE_URL` (defaults to SQLite)
    - `APP_HOST` / `APP_PORT` (bind to `127.0.0.1` for local-only use)
    - `ADMIN_USERNAME` / `ADMIN_PASSWORD` (UI login)
    - `SESSION_SECRET` (session signing; change this)
-4. Run the app:
-   ```bash
-   uvicorn protonmailer.main:app --host 127.0.0.1 --port 8000 --reload
-   ```
 
-## Usage
-1. Visit http://127.0.0.1:8000/ui/login and sign in with your admin credentials.
-2. Add an SMTP account (e.g., Proton Mail Bridge host/port/username/password).
-3. Add contacts (manually or via CSV import on the Contacts page).
-4. Create an email template and a campaign targeting specific tags.
-5. The in-process scheduler enqueues due campaign emails and sends queued messages automatically.
-6. Monitor the dashboard for queue, sent, and failed items. The UI is intended for local use only; do not expose it to the internet without additional hardening.
+## Usage (step-by-step)
+1. Open the UI at http://127.0.0.1:8000/ui/login and sign in with your admin credentials.
+2. Add an SMTP account (e.g., Proton Mail Bridge host/port/username/password) on the Accounts page.
+3. Add contacts on the Contacts page (manual entry or CSV import).
+4. Create an email template, then build a campaign that targets specific tags.
+5. Let the in-process scheduler enqueue due campaign emails and send queued messages automatically.
+6. Monitor the dashboard for queued, sent, and failed items. The UI is intended for local use only; do not expose it to the internet without additional hardening.
 
 ## Development helpers
 - Run the app: `make run`
