@@ -12,11 +12,20 @@ if [[ "${1:-}" == "--reset" ]]; then
   rm -f "${ENV_FILE}"
 fi
 
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON_CMD="python3"
+elif command -v python >/dev/null 2>&1; then
+  PYTHON_CMD="python"
+else
+  echo "[setup] Python is not installed or not on PATH" >&2
+  exit 1
+fi
+
 if [[ -d "${VENV_DIR}" ]]; then
   echo "[setup] Reusing existing virtual environment at ${VENV_DIR}"
 else
-  echo "[setup] Creating virtual environment at ${VENV_DIR}"
-  python -m venv "${VENV_DIR}"
+  echo "[setup] Creating virtual environment at ${VENV_DIR}" 
+  "${PYTHON_CMD}" -m venv "${VENV_DIR}"
 fi
 
 if [[ -x "${VENV_DIR}/bin/python" ]]; then
