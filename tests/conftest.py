@@ -45,5 +45,14 @@ def clean_db() -> Generator:
 
 
 @pytest.fixture
+def session() -> Generator:
+    db = TestingSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@pytest.fixture
 def client() -> TestClient:
     return TestClient(main.app)
