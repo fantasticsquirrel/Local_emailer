@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Failed Emails</h1>
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>To</th>
+            <th>Subject</th>
+            <th>Scheduled For</th>
+            <th>Error</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for email in queued_emails %}
+        <tr>
+            <td>{{ email.id }}</td>
+            <td>{{ email.to_address }}</td>
+            <td>{{ email.subject }}</td>
+            <td>{{ email.scheduled_for }}</td>
+            <td>{{ email.last_error }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="muted">No failed emails.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Dashboard</h1>
+<div class="card-grid">
+    <div class="card">
+        <strong>Accounts</strong>
+        <div>{{ accounts_count }}</div>
+    </div>
+    <div class="card">
+        <strong>Contacts</strong>
+        <div>{{ contacts_count }}</div>
+    </div>
+    <div class="card">
+        <strong>Campaigns</strong>
+        <div>{{ campaigns_count }}</div>
+    </div>
+    <div class="card">
+        <strong>Queued</strong>
+        <div>{{ queued_count }}</div>
+    </div>
+    <div class="card">
+        <strong>Sent</strong>
+        <div>{{ sent_count }}</div>
+    </div>
+</div>
+<p class="muted">Local-only dashboard for quick visibility into protonmailer state.</p>
+{% endblock %}
