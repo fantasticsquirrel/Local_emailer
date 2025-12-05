@@ -23,7 +23,7 @@ app = FastAPI(title="protonmailer")
 app.add_middleware(SessionMiddleware, secret_key=settings.SESSION_SECRET)
 
 # Bind the app locally; intended for development use on 127.0.0.1
-templates = Jinja2Templates(directory="templates")
+template_engine = Jinja2Templates(directory="templates")
 
 
 @app.on_event("startup")
