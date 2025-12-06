@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{% if campaign %}Edit Campaign{% else %}New Campaign{% endif %}</h1>
+{% set sc = schedule_config if schedule_config is defined else {} %}
+{% if campaign %}
+  <form method="post" action="{{ url_for('campaign_update', campaign_id=campaign.id) }}">
+{% else %}
+  <form method="post" action="{{ url_for('campaign_create') }}">
+{% endif %}
+  <div>
+    <label for="name">Name:</label>
+    <input type="text" id="name" name="name" value="{{ campaign.name if campaign else '' }}" required />
+  </div>
+  <div>
+    <label for="account_id">Account:</label>
+    <select id="account_id" name="account_id" required>
+      {% for a in accounts %}
+        <option value="{{ a.id }}" {% if campaign and campaign.account_id == a.id %}selected{% endif %}>
+          {{ a.display_name }} &lt;{{ a.email_address }}&gt;
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label for="template_id">Template:</label>
+    <select id="template_id" name="template_id" required>
+      {% for t in templates %}
+        <option value="{{ t.id }}" {% if campaign and campaign.template_id == t.id %}selected{% endif %}>
+          {{ t.name }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label for="target_tags">Target Tags (comma-separated):</label>
+    <input type="text" id="target_tags" name="target_tags" value="{{ campaign.target_tags if campaign else '' }}" />
+  </div>
+  <div>
+    <label for="schedule_type">Schedule Type:</label>
+    <select id="schedule_type" name="schedule_type">
+      <option value="one_time" {% if campaign and campaign.schedule_type == 'one_time' %}selected{% endif %}>One-time</option>
+      <option value="recurring" {% if campaign and campaign.schedule_type == 'recurring' %}selected{% endif %}>Recurring</option>
+    </select>
+  </div>
+  <div>
+    <label for="freq">Frequency:</label>
+    <select id="freq" name="freq">
+      <option value="once" {% if sc.get('freq') == 'once' %}selected{% endif %}>Once</option>
+      <option value="daily" {% if sc.get('freq') == 'daily' %}selected{% endif %}>Daily</option>
+      <option value="weekly" {% if sc.get('freq') == 'weekly' %}selected{% endif %}>Weekly</option>
+    </select>
+  </div>
+  <div>
+    <label for="run_date">Run Date:</label>
+    <input type="date" id="run_date" name="run_date" value="{{ sc.get('run_date', '') }}" />
+    <label for="run_time">Run Time:</label>
+    <input type="time" id="run_time" name="run_time" value="{{ sc.get('run_time', '') }}" />
+  </div>
+  <div>
+    <label for="day_of_week">Day of Week (for weekly):</label>
+    <input type="text" id="day_of_week" name="day_of_week" value="{{ sc.get('day_of_week', '') }}" />
+  </div>
+  <div>
+    <label>
+      <input type="checkbox" name="active" {% if campaign and campaign.active %}checked{% endif %} />
+      Active
+    </label>
+  </div>
+  <div>
+    <button type="submit">Save</button>
+  </div>
+</form>
+{% endblock %}
