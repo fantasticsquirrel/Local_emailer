@@ -23,10 +23,10 @@
         <nav>
             <a href="/">Dashboard</a>
             <a href="/ui/accounts">Accounts</a>
-            <a href="/ui/contacts">Contacts</a>
-            <a href="/ui/campaigns">Campaigns</a>
-            <a href="/ui/queue">Queue</a>
-            <a href="/ui/failed">Failed</a>
+            <a href="{{ url_for('contacts_list') }}">Contacts</a>
+            <a href="{{ url_for('campaigns_list') }}">Campaigns</a>
+            <a href="{{ url_for('queue_list') }}">Queue</a>
+            <a href="/ui/compose">Compose</a>
             {% if request.session.get('authenticated') %}
             <a href="/ui/logout">Logout</a>
             {% else %}

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Compose Email</h1>
+<form method="post" action="{{ request.url_for('submit_compose_email') }}">
+  <div>
+    <label for="account_id">From account:</label>
+    <select name="account_id" id="account_id" required>
+      {% for a in accounts %}
+        <option value="{{ a.id }}">{{ a.display_name }} &lt;{{ a.email_address }}&gt;</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label for="to">To (comma-separated):</label>
+    <input type="text" name="to" id="to" required />
+  </div>
+  <div>
+    <label for="template_id">Template:</label>
+    <select name="template_id" id="template_id">
+      <option value="">-- None --</option>
+      {% for t in templates %}
+        <option value="{{ t.id }}">{{ t.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label for="subject">Subject:</label>
+    <input type="text" name="subject" id="subject" />
+  </div>
+  <div>
+    <label for="body">Body (HTML):</label>
+    <textarea name="body" id="body" rows="10" cols="80"></textarea>
+  </div>
+  <div>
+    <label><input type="checkbox" name="send_now" id="send_now" checked /> Send now</label>
+  </div>
+  <div>
+    <label for="send_date">Send date:</label>
+    <input type="date" name="send_date" id="send_date" />
+    <label for="send_time">Send time:</label>
+    <input type="time" name="send_time" id="send_time" />
+  </div>
+  <div>
+    <button type="submit">Queue Email(s)</button>
+  </div>
+</form>
+{% endblock %}

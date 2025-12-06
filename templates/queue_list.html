@@ -1,32 +1,44 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Queued Emails</h1>
+<h1>Email Queue</h1>
 <table>
-    <thead>
-        <tr>
-            <th>ID</th>
-            <th>Campaign</th>
-            <th>To</th>
-            <th>Subject</th>
-            <th>Status</th>
-            <th>Scheduled For</th>
-            <th>Last Error</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for email in queued_emails %}
-        <tr>
-            <td>{{ email.id }}</td>
-            <td>{{ email.campaign_id }}</td>
-            <td>{{ email.to_address }}</td>
-            <td>{{ email.subject }}</td>
-            <td>{{ email.status }}</td>
-            <td>{{ email.scheduled_for }}</td>
-            <td>{{ email.last_error }}</td>
-        </tr>
-        {% else %}
-        <tr><td colspan="7" class="muted">No queued emails.</td></tr>
-        {% endfor %}
-    </tbody>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Status</th>
+      <th>From</th>
+      <th>To</th>
+      <th>Subject</th>
+      <th>Scheduled For</th>
+      <th>Error</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in emails %}
+      <tr>
+        <td>{{ e.id }}</td>
+        <td>{{ e.status }}</td>
+        <td>{{ e.from_address }}</td>
+        <td>{{ e.to_address }}</td>
+        <td>{{ e.subject }}</td>
+        <td>{{ e.scheduled_for }}</td>
+        <td>{{ e.last_error }}</td>
+        <td>
+          {% if e.status == "queued" %}
+            <form method="post" action="{{ url_for('queue_cancel', email_id=e.id) }}" style="display:inline">
+              <button type="submit">Cancel</button>
+            </form>
+          {% elif e.status == "failed" %}
+            <form method="post" action="{{ url_for('queue_retry', email_id=e.id) }}" style="display:inline">
+              <button type="submit">Retry</button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="muted">No emails in queue.</td></tr>
+    {% endfor %}
+  </tbody>
 </table>
 {% endblock %}

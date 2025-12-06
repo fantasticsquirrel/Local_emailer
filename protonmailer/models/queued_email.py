@@ -1,3 +1,4 @@
+import sqlalchemy as sa
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import relationship
 
@@ -17,6 +18,8 @@ class QueuedEmail(Base):
     body_text = Column(Text)
     scheduled_for = Column(DateTime(timezone=True), nullable=False)
     status = Column(String, nullable=False)
+    source = sa.Column(sa.String, default="manual", nullable=False)
+    metadata_json = sa.Column(sa.Text, nullable=True)
     last_error = Column(Text)
     sent_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

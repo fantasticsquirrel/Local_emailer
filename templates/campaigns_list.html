@@ -1,32 +1,40 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Campaigns</h1>
+<p><a href="{{ url_for('campaign_new') }}">New Campaign</a></p>
 <table>
-    <thead>
-        <tr>
-            <th>ID</th>
-            <th>Name</th>
-            <th>Account</th>
-            <th>Template</th>
-            <th>Schedule Type</th>
-            <th>Active</th>
-            <th>Last Run</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for campaign in campaigns %}
-        <tr>
-            <td>{{ campaign.id }}</td>
-            <td>{{ campaign.name }}</td>
-            <td>{{ campaign.account_id }}</td>
-            <td>{{ campaign.template_id }}</td>
-            <td>{{ campaign.schedule_type }}</td>
-            <td>{{ campaign.active }}</td>
-            <td>{{ campaign.last_run_at }}</td>
-        </tr>
-        {% else %}
-        <tr><td colspan="7" class="muted">No campaigns found.</td></tr>
-        {% endfor %}
-    </tbody>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Name</th>
+      <th>Schedule Type</th>
+      <th>Active</th>
+      <th>Last Run</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in campaigns %}
+      <tr>
+        <td>{{ c.id }}</td>
+        <td>{{ c.name }}</td>
+        <td>{{ c.schedule_type }}</td>
+        <td>{{ "Yes" if c.active else "No" }}</td>
+        <td>{{ c.last_run_at }}</td>
+        <td>
+          <a href="{{ url_for('campaign_edit', campaign_id=c.id) }}">Edit</a>
+          {% if c.active %}
+            <form method="post" action="{{ url_for('campaign_deactivate', campaign_id=c.id) }}" style="display:inline">
+              <button type="submit">Deactivate</button>
+            </form>
+          {% else %}
+            <form method="post" action="{{ url_for('campaign_activate', campaign_id=c.id) }}" style="display:inline">
+              <button type="submit">Activate</button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
 </table>
 {% endblock %}

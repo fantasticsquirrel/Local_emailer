@@ -1,3 +1,6 @@
+import json
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Form, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -68,42 +71,431 @@ def accounts_list(request: Request, db: Session = Depends(get_db)):
     )
 
 
-@router.get("/contacts", response_class=HTMLResponse, dependencies=[Depends(require_login)])
+@router.get(
+    "/contacts",
+    response_class=HTMLResponse,
+    name="contacts_list",
+    dependencies=[Depends(require_login)],
+)
 def contacts_list(request: Request, db: Session = Depends(get_db)):
-    contacts = db.query(models.Contact).all()
+    contacts = db.query(models.Contact).order_by(models.Contact.created_at.desc()).all()
     return templates.TemplateResponse(
         "contacts_list.html", {"request": request, "contacts": contacts}
     )
 
 
-@router.get("/campaigns", response_class=HTMLResponse, dependencies=[Depends(require_login)])
-def campaigns_list(request: Request, db: Session = Depends(get_db)):
-    campaigns = db.query(models.Campaign).all()
+@router.get(
+    "/contacts/new",
+    response_class=HTMLResponse,
+    name="contact_new",
+    dependencies=[Depends(require_login)],
+)
+async def contact_new(request: Request):
     return templates.TemplateResponse(
-        "campaigns_list.html", {"request": request, "campaigns": campaigns}
+        "contact_form.html",
+        {"request": request, "contact": None},
     )
 
 
-@router.get("/queue", response_class=HTMLResponse, dependencies=[Depends(require_login)])
+@router.post(
+    "/contacts/new",
+    response_class=HTMLResponse,
+    name="contact_create",
+    dependencies=[Depends(require_login)],
+)
+async def contact_create(request: Request, db: Session = Depends(get_db)):
+    form = await request.form()
+    name = form.get("name") or ""
+    email = form.get("email") or ""
+    tags = form.get("tags") or ""
+
+    if "@" not in email:
+        return templates.TemplateResponse(
+            "error.html",
+            {"request": request, "message": "Invalid email"},
+            status_code=400,
+        )
+
+    contact = models.Contact(name=name, email=email, tags=tags)
+    db.add(contact)
+    db.commit()
+
+    return RedirectResponse(request.url_for("contacts_list"), status_code=303)
+
+
+@router.get(
+    "/contacts/{contact_id}/edit",
+    response_class=HTMLResponse,
+    name="contact_edit",
+    dependencies=[Depends(require_login)],
+)
+async def contact_edit(contact_id: int, request: Request, db: Session = Depends(get_db)):
+    contact = db.query(models.Contact).filter(models.Contact.id == contact_id).first()
+    if contact is None:
+        return templates.TemplateResponse(
+            "error.html",
+            {"request": request, "message": "Contact not found"},
+            status_code=404,
+        )
+    return templates.TemplateResponse(
+        "contact_form.html",
+        {"request": request, "contact": contact},
+    )
+
+
+@router.post(
+    "/contacts/{contact_id}/edit",
+    response_class=HTMLResponse,
+    name="contact_update",
+    dependencies=[Depends(require_login)],
+)
+async def contact_update(contact_id: int, request: Request, db: Session = Depends(get_db)):
+    form = await request.form()
+    name = form.get("name") or ""
+    email = form.get("email") or ""
+    tags = form.get("tags") or ""
+
+    contact = db.query(models.Contact).filter(models.Contact.id == contact_id).first()
+    if contact is None:
+        return templates.TemplateResponse(
+            "error.html",
+            {"request": request, "message": "Contact not found"},
+            status_code=404,
+        )
+
+    contact.name = name
+    contact.email = email
+    contact.tags = tags
+    db.commit()
+
+    return RedirectResponse(request.url_for("contacts_list"), status_code=303)
+
+
+@router.post(
+    "/contacts/{contact_id}/delete",
+    response_class=HTMLResponse,
+    name="contact_delete",
+    dependencies=[Depends(require_login)],
+)
+async def contact_delete(contact_id: int, request: Request, db: Session = Depends(get_db)):
+    contact = db.query(models.Contact).filter(models.Contact.id == contact_id).first()
+    if contact:
+        db.delete(contact)
+        db.commit()
+    return RedirectResponse(request.url_for("contacts_list"), status_code=303)
+
+
+@router.get(
+    "/campaigns",
+    response_class=HTMLResponse,
+    name="campaigns_list",
+    dependencies=[Depends(require_login)],
+)
+async def campaigns_list(request: Request, db: Session = Depends(get_db)):
+    campaigns = db.query(models.Campaign).order_by(models.Campaign.created_at.desc()).all()
+    return templates.TemplateResponse(
+        "campaigns_list.html",
+        {"request": request, "campaigns": campaigns},
+    )
+
+
+@router.get(
+    "/campaigns/new",
+    response_class=HTMLResponse,
+    name="campaign_new",
+    dependencies=[Depends(require_login)],
+)
+async def campaign_new(request: Request, db: Session = Depends(get_db)):
+    accounts = db.query(models.Account).all()
+    templates_list = db.query(models.Template).all()
+    return templates.TemplateResponse(
+        "campaign_form.html",
+        {
+            "request": request,
+            "campaign": None,
+            "accounts": accounts,
+            "templates": templates_list,
+        },
+    )
+
+
+@router.post(
+    "/campaigns/new",
+    response_class=HTMLResponse,
+    name="campaign_create",
+    dependencies=[Depends(require_login)],
+)
+async def campaign_create(request: Request, db: Session = Depends(get_db)):
+    form = await request.form()
+    name = form.get("name") or ""
+    account_id = int(form.get("account_id"))
+    template_id = int(form.get("template_id"))
+    target_tags = form.get("target_tags") or ""
+    schedule_type = form.get("schedule_type") or "one_time"
+    active = form.get("active") == "on"
+
+    run_date = form.get("run_date") or ""
+    run_time = form.get("run_time") or ""
+    freq = form.get("freq") or "once"
+    day_of_week = form.get("day_of_week") or None
+
+    schedule_config = {
+        "freq": freq,
+        "run_date": run_date,
+        "run_time": run_time,
+        "day_of_week": day_of_week,
+    }
+
+    campaign = models.Campaign(
+        name=name,
+        account_id=account_id,
+        template_id=template_id,
+        target_tags=target_tags,
+        schedule_type=schedule_type,
+        schedule_config=json.dumps(schedule_config),
+        active=active,
+    )
+    db.add(campaign)
+    db.commit()
+
+    return RedirectResponse(request.url_for("campaigns_list"), status_code=303)
+
+
+@router.get(
+    "/campaigns/{campaign_id}/edit",
+    response_class=HTMLResponse,
+    name="campaign_edit",
+    dependencies=[Depends(require_login)],
+)
+async def campaign_edit(campaign_id: int, request: Request, db: Session = Depends(get_db)):
+    campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
+    if not campaign:
+        return templates.TemplateResponse(
+            "error.html",
+            {"request": request, "message": "Campaign not found"},
+            status_code=404,
+        )
+    accounts = db.query(models.Account).all()
+    templates_list = db.query(models.Template).all()
+
+    try:
+        schedule_config = json.loads(campaign.schedule_config or "{}")
+    except json.JSONDecodeError:
+        schedule_config = {}
+
+    return templates.TemplateResponse(
+        "campaign_form.html",
+        {
+            "request": request,
+            "campaign": campaign,
+            "accounts": accounts,
+            "templates": templates_list,
+            "schedule_config": schedule_config,
+        },
+    )
+
+
+@router.post(
+    "/campaigns/{campaign_id}/edit",
+    response_class=HTMLResponse,
+    name="campaign_update",
+    dependencies=[Depends(require_login)],
+)
+async def campaign_update(campaign_id: int, request: Request, db: Session = Depends(get_db)):
+    form = await request.form()
+    name = form.get("name") or ""
+    account_id = int(form.get("account_id"))
+    template_id = int(form.get("template_id"))
+    target_tags = form.get("target_tags") or ""
+    schedule_type = form.get("schedule_type") or "one_time"
+    active = form.get("active") == "on"
+
+    run_date = form.get("run_date") or ""
+    run_time = form.get("run_time") or ""
+    freq = form.get("freq") or "once"
+    day_of_week = form.get("day_of_week") or None
+
+    schedule_config = {
+        "freq": freq,
+        "run_date": run_date,
+        "run_time": run_time,
+        "day_of_week": day_of_week,
+    }
+
+    campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
+    if not campaign:
+        return templates.TemplateResponse(
+            "error.html",
+            {"request": request, "message": "Campaign not found"},
+            status_code=404,
+        )
+
+    campaign.name = name
+    campaign.account_id = account_id
+    campaign.template_id = template_id
+    campaign.target_tags = target_tags
+    campaign.schedule_type = schedule_type
+    campaign.schedule_config = json.dumps(schedule_config)
+    campaign.active = active
+    db.commit()
+
+    return RedirectResponse(request.url_for("campaigns_list"), status_code=303)
+
+
+@router.post(
+    "/campaigns/{campaign_id}/activate",
+    response_class=HTMLResponse,
+    name="campaign_activate",
+    dependencies=[Depends(require_login)],
+)
+async def campaign_activate(campaign_id: int, request: Request, db: Session = Depends(get_db)):
+    campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
+    if campaign:
+        campaign.active = True
+        db.commit()
+    return RedirectResponse(request.url_for("campaigns_list"), status_code=303)
+
+
+@router.post(
+    "/campaigns/{campaign_id}/deactivate",
+    response_class=HTMLResponse,
+    name="campaign_deactivate",
+    dependencies=[Depends(require_login)],
+)
+async def campaign_deactivate(campaign_id: int, request: Request, db: Session = Depends(get_db)):
+    campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
+    if campaign:
+        campaign.active = False
+        db.commit()
+    return RedirectResponse(request.url_for("campaigns_list"), status_code=303)
+
+
+@router.get(
+    "/queue",
+    response_class=HTMLResponse,
+    name="queue_list",
+    dependencies=[Depends(require_login)],
+)
 def queue_list(request: Request, db: Session = Depends(get_db)):
-    queued_emails = (
+    emails = (
         db.query(models.QueuedEmail)
-        .order_by(models.QueuedEmail.scheduled_for.desc())
+        .order_by(models.QueuedEmail.created_at.desc())
+        .limit(200)
         .all()
     )
     return templates.TemplateResponse(
-        "queue_list.html", {"request": request, "queued_emails": queued_emails}
+        "queue_list.html", {"request": request, "emails": emails}
     )
 
 
-@router.get("/failed", response_class=HTMLResponse, dependencies=[Depends(require_login)])
-def failed_emails(request: Request, db: Session = Depends(get_db)):
-    failed = (
-        db.query(models.QueuedEmail)
-        .filter(models.QueuedEmail.status == "failed")
-        .order_by(models.QueuedEmail.scheduled_for.desc())
-        .all()
-    )
+@router.post(
+    "/queue/{email_id}/cancel",
+    response_class=HTMLResponse,
+    name="queue_cancel",
+    dependencies=[Depends(require_login)],
+)
+def queue_cancel(email_id: int, request: Request, db: Session = Depends(get_db)):
+    qe = db.query(models.QueuedEmail).filter(models.QueuedEmail.id == email_id).first()
+    if qe and qe.status == "queued":
+        qe.status = "cancelled"
+        db.commit()
+    return RedirectResponse(request.url_for("queue_list"), status_code=303)
+
+
+@router.post(
+    "/queue/{email_id}/retry",
+    response_class=HTMLResponse,
+    name="queue_retry",
+    dependencies=[Depends(require_login)],
+)
+def queue_retry(email_id: int, request: Request, db: Session = Depends(get_db)):
+    qe = db.query(models.QueuedEmail).filter(models.QueuedEmail.id == email_id).first()
+    if qe and qe.status == "failed":
+        qe.status = "queued"
+        qe.last_error = None
+        qe.scheduled_for = datetime.utcnow()
+        db.commit()
+    return RedirectResponse(request.url_for("queue_list"), status_code=303)
+
+
+@router.get(
+    "/compose",
+    response_class=HTMLResponse,
+    dependencies=[Depends(require_login)],
+)
+async def compose_email(request: Request, db: Session = Depends(get_db)):
+    accounts = db.query(models.Account).all()
+    templates_list = db.query(models.Template).all()
     return templates.TemplateResponse(
-        "failed_list.html", {"request": request, "queued_emails": failed}
+        "email_compose.html",
+        {"request": request, "accounts": accounts, "templates": templates_list},
     )
+
+
+@router.post(
+    "/compose",
+    response_class=HTMLResponse,
+    dependencies=[Depends(require_login)],
+)
+async def submit_compose_email(request: Request, db: Session = Depends(get_db)):
+    form = await request.form()
+    account_id = int(form.get("account_id"))
+    to_raw = form.get("to") or ""
+    subject = form.get("subject") or ""
+    body = form.get("body") or ""
+    template_id = form.get("template_id") or None
+    send_now = form.get("send_now") == "on"
+    send_date = form.get("send_date") or ""
+    send_time = form.get("send_time") or ""
+
+    account = db.query(models.Account).filter(models.Account.id == account_id).first()
+    if account is None:
+        return templates.TemplateResponse(
+            "error.html",
+            {"request": request, "message": "Account not found"},
+            status_code=400,
+        )
+
+    if template_id:
+        template = (
+            db.query(models.Template).filter(models.Template.id == int(template_id)).first()
+        )
+        if template:
+            subject = template.subject
+            body = template.body_html
+
+    if send_now:
+        scheduled_for = datetime.utcnow()
+    else:
+        if send_date and send_time:
+            scheduled_for = datetime.fromisoformat(f"{send_date}T{send_time}")
+        else:
+            scheduled_for = datetime.utcnow()
+
+    raw_parts = [p.strip() for p in to_raw.replace(";", ",").split(",")]
+    to_addresses = [p for p in raw_parts if p]
+
+    from_address = account.email_address
+
+    created_count = 0
+    for addr in to_addresses:
+        qe = models.QueuedEmail(
+            campaign_id=None,
+            account_id=account.id,
+            from_address=from_address,
+            to_address=addr,
+            subject=subject,
+            body_html=body,
+            body_text=None,
+            scheduled_for=scheduled_for,
+            status="queued",
+            source="manual",
+        )
+        db.add(qe)
+        created_count += 1
+
+    db.commit()
+
+    url = request.url_for("queue_list")
+    response = RedirectResponse(url, status_code=303)
+    return response
