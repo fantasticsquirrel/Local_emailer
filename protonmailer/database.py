@@ -25,14 +25,18 @@ def _run_sqlite_migrations() -> None:
         return
 
     with engine.begin() as conn:
-        has_source_column = any(
-            row[1] == "source"
-            for row in conn.execute(text("PRAGMA table_info('queued_emails')"))
-        )
+        columns = {row[1] for row in conn.execute(text("PRAGMA table_info('queued_emails')"))}
 
-        if not has_source_column:
+        if "source" not in columns:
             conn.execute(
                 text(
                     "ALTER TABLE queued_emails ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'"
+                )
+            )
+
+        if "metadata_json" not in columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE queued_emails ADD COLUMN metadata_json TEXT"
                 )
             )
