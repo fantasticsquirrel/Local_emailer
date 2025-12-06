@@ -1,5 +1,6 @@
+import calendar
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Form, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -12,6 +13,80 @@ from protonmailer.services.auth_service import login_user, logout_user, require_
 
 router = APIRouter(prefix="/ui", tags=["ui"])
 templates = Jinja2Templates(directory="templates")
+
+
+def _split_addresses(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    return [part.strip() for part in raw.replace(";", ",").split(",") if part.strip()]
+
+
+def _add_months(base: datetime, months: int, day: int) -> datetime:
+    month_index = base.month - 1 + months
+    year = base.year + month_index // 12
+    month = month_index % 12 + 1
+    last_day = calendar.monthrange(year, month)[1]
+    target_day = min(max(day, 1), last_day)
+    return base.replace(year=year, month=month, day=target_day)
+
+
+def _calculate_step_time(previous: datetime, step: dict) -> datetime:
+    offset_type = step.get("offset_type") or "immediate"
+    if offset_type == "days":
+        try:
+            days = int(step.get("offset_value") or 0)
+        except (TypeError, ValueError):
+            days = 0
+        return previous + timedelta(days=days)
+
+    if offset_type == "monthly":
+        try:
+            day_of_month = int(step.get("day_of_month") or previous.day)
+        except (TypeError, ValueError):
+            day_of_month = previous.day
+        try:
+            month_interval = int(step.get("month_interval") or 1)
+        except (TypeError, ValueError):
+            month_interval = 1
+        return _add_months(previous, month_interval, day_of_month)
+
+    return previous
+
+
+def _load_sequence_steps(payload: str | None, fallback_subject: str, fallback_body: str) -> list[dict]:
+    try:
+        raw_steps = json.loads(payload or "[]")
+    except json.JSONDecodeError:
+        raw_steps = []
+
+    steps: list[dict] = []
+    for step in raw_steps:
+        subject = step.get("subject") or fallback_subject
+        body = step.get("body") or fallback_body
+        if not subject or not body:
+            continue
+        steps.append(
+            {
+                "subject": subject,
+                "body": body,
+                "offset_type": step.get("offset_type") or "immediate",
+                "offset_value": step.get("offset_value"),
+                "day_of_month": step.get("day_of_month"),
+                "month_interval": step.get("month_interval"),
+            }
+        )
+
+    if not steps:
+        steps.append(
+            {
+                "subject": fallback_subject,
+                "body": fallback_body,
+                "offset_type": "immediate",
+                "offset_value": 0,
+            }
+        )
+
+    return steps
 
 
 def render_dashboard(request: Request, db: Session):
@@ -426,9 +501,15 @@ def queue_retry(email_id: int, request: Request, db: Session = Depends(get_db)):
 async def compose_email(request: Request, db: Session = Depends(get_db)):
     accounts = db.query(models.Account).all()
     templates_list = db.query(models.Template).all()
+    contacts = db.query(models.Contact).order_by(models.Contact.name.asc()).all()
     return templates.TemplateResponse(
         "email_compose.html",
-        {"request": request, "accounts": accounts, "templates": templates_list},
+        {
+            "request": request,
+            "accounts": accounts,
+            "templates": templates_list,
+            "contacts": contacts,
+        },
     )
 
 
@@ -440,13 +521,15 @@ async def compose_email(request: Request, db: Session = Depends(get_db)):
 async def submit_compose_email(request: Request, db: Session = Depends(get_db)):
     form = await request.form()
     account_id = int(form.get("account_id"))
-    to_raw = form.get("to") or ""
     subject = form.get("subject") or ""
     body = form.get("body") or ""
     template_id = form.get("template_id") or None
     send_now = form.get("send_now") == "on"
     send_date = form.get("send_date") or ""
     send_time = form.get("send_time") or ""
+    sequence_payload = form.get("sequence_payload") or "[]"
+    manual_to = form.get("to_manual") or ""
+    selected_contacts = form.getlist("to_contacts")
 
     account = db.query(models.Account).filter(models.Account.id == account_id).first()
     if account is None:
@@ -461,8 +544,8 @@ async def submit_compose_email(request: Request, db: Session = Depends(get_db)):
             db.query(models.Template).filter(models.Template.id == int(template_id)).first()
         )
         if template:
-            subject = template.subject
-            body = template.body_html
+            subject = subject or template.subject
+            body = body or template.body_html
 
     if send_now:
         scheduled_for = datetime.utcnow()
@@ -472,27 +555,75 @@ async def submit_compose_email(request: Request, db: Session = Depends(get_db)):
         else:
             scheduled_for = datetime.utcnow()
 
-    raw_parts = [p.strip() for p in to_raw.replace(";", ",").split(",")]
-    to_addresses = [p for p in raw_parts if p]
+    contact_ids = []
+    for cid in selected_contacts:
+        try:
+            contact_ids.append(int(cid))
+        except ValueError:
+            continue
+
+    contacts = (
+        db.query(models.Contact)
+        .filter(models.Contact.id.in_(contact_ids))
+        .order_by(models.Contact.id.asc())
+        .all()
+        if contact_ids
+        else []
+    )
+
+    to_addresses = []
+    seen = set()
+    for contact in contacts:
+        if contact.email not in seen:
+            to_addresses.append(contact.email)
+            seen.add(contact.email)
+
+    for addr in _split_addresses(manual_to):
+        if addr not in seen:
+            to_addresses.append(addr)
+            seen.add(addr)
+
+    if not to_addresses:
+        return templates.TemplateResponse(
+            "error.html",
+            {"request": request, "message": "No recipients selected"},
+            status_code=400,
+        )
+
+    steps = _load_sequence_steps(sequence_payload, subject, body)
 
     from_address = account.email_address
 
     created_count = 0
-    for addr in to_addresses:
-        qe = models.QueuedEmail(
-            campaign_id=None,
-            account_id=account.id,
-            from_address=from_address,
-            to_address=addr,
-            subject=subject,
-            body_html=body,
-            body_text=None,
-            scheduled_for=scheduled_for,
-            status="queued",
-            source="manual",
-        )
-        db.add(qe)
-        created_count += 1
+    current_send_time = scheduled_for
+    for index, step in enumerate(steps, start=1):
+        if step.get("offset_type") != "immediate":
+            current_send_time = _calculate_step_time(current_send_time, step)
+
+        for addr in to_addresses:
+            qe = models.QueuedEmail(
+                campaign_id=None,
+                account_id=account.id,
+                from_address=from_address,
+                to_address=addr,
+                subject=step.get("subject") or subject,
+                body_html=step.get("body") or body,
+                body_text=None,
+                scheduled_for=current_send_time,
+                status="queued",
+                source="manual",
+                metadata_json=json.dumps(
+                    {
+                        "sequence_step": index,
+                        "offset_type": step.get("offset_type"),
+                        "offset_value": step.get("offset_value"),
+                        "month_interval": step.get("month_interval"),
+                        "day_of_month": step.get("day_of_month"),
+                    }
+                ),
+            )
+            db.add(qe)
+            created_count += 1
 
     db.commit()
 
