@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Compose Email</h1>
-<form method="post" action="{{ request.url_for('submit_compose_email') }}">
+<form method="post" action="{{ request.url_for('submit_compose_email') }}" id="compose-form">
   <div>
     <label for="account_id">From account:</label>
     <select name="account_id" id="account_id" required>
@@ -11,37 +11,233 @@
     </select>
   </div>
   <div>
-    <label for="to">To (comma-separated):</label>
-    <input type="text" name="to" id="to" required />
+    <label for="to_contacts">To (select contacts):</label>
+    <select name="to_contacts" id="to_contacts" multiple size="6" style="min-width: 320px;">
+      {% for c in contacts %}
+        <option value="{{ c.id }}">{{ c.name or c.email }} &lt;{{ c.email }}&gt;</option>
+      {% endfor %}
+    </select>
+    <p class="muted">Hold Ctrl/Cmd to pick multiple contacts.</p>
+  </div>
+  <div>
+    <label for="to_manual">Additional To (comma-separated):</label>
+    <input type="text" name="to_manual" id="to_manual" placeholder="someone@example.com, other@example.com" />
   </div>
   <div>
     <label for="template_id">Template:</label>
     <select name="template_id" id="template_id">
       <option value="">-- None --</option>
       {% for t in templates %}
-        <option value="{{ t.id }}">{{ t.name }}</option>
+        <option value="{{ t.id }}" data-subject="{{ t.subject|e }}" data-body="{{ t.body_html|e }}">{{ t.name }}</option>
       {% endfor %}
     </select>
+    <p class="muted">Selecting a template will prefill the first email's subject and body.</p>
   </div>
   <div>
-    <label for="subject">Subject:</label>
-    <input type="text" name="subject" id="subject" />
+    <label for="subject">Subject (Email 1):</label>
+    <input type="text" name="subject" id="subject" required />
   </div>
   <div>
-    <label for="body">Body (HTML):</label>
-    <textarea name="body" id="body" rows="10" cols="80"></textarea>
+    <label for="body">Body (HTML) for Email 1:</label>
+    <textarea name="body" id="body" rows="8" cols="80" required></textarea>
   </div>
   <div>
-    <label><input type="checkbox" name="send_now" id="send_now" checked /> Send now</label>
+    <label><input type="checkbox" name="send_now" id="send_now" checked /> Send the first email immediately</label>
   </div>
   <div>
-    <label for="send_date">Send date:</label>
+    <label for="send_date">First send date:</label>
     <input type="date" name="send_date" id="send_date" />
-    <label for="send_time">Send time:</label>
+    <label for="send_time">First send time:</label>
     <input type="time" name="send_time" id="send_time" />
+    <p class="muted">Specify date/time to start the sequence later. Leave blank to send now.</p>
   </div>
-  <div>
+
+  <fieldset style="margin-top: 1rem;">
+    <legend>Email sequence</legend>
+    <p class="muted">Add additional scheduled emails that reuse the same recipients.</p>
+    <div id="sequence-container"></div>
+    <button type="button" id="add-step">Add another scheduled email</button>
+  </fieldset>
+
+  <input type="hidden" name="sequence_payload" id="sequence_payload" />
+
+  <div style="margin-top: 1rem;">
     <button type="submit">Queue Email(s)</button>
   </div>
 </form>
+
+<script>
+(function() {
+  const templateSelect = document.getElementById('template_id');
+  const subjectInput = document.getElementById('subject');
+  const bodyInput = document.getElementById('body');
+  const sequenceContainer = document.getElementById('sequence-container');
+  const addStepBtn = document.getElementById('add-step');
+  const sequencePayload = document.getElementById('sequence_payload');
+  let stepCounter = 0;
+
+  templateSelect.addEventListener('change', () => {
+    const selected = templateSelect.options[templateSelect.selectedIndex];
+    const tmplSubject = selected.dataset.subject || '';
+    const tmplBody = selected.dataset.body || '';
+    if (tmplSubject) subjectInput.value = tmplSubject;
+    if (tmplBody) bodyInput.value = tmplBody;
+  });
+
+  function createStepCard(index) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'card';
+    wrapper.dataset.stepId = index;
+    wrapper.style.marginTop = '0.75rem';
+
+    const heading = document.createElement('h3');
+    heading.textContent = `Scheduled Email ${index}`;
+    wrapper.appendChild(heading);
+
+    const subjectLabel = document.createElement('label');
+    subjectLabel.textContent = 'Subject:';
+    const subjectField = document.createElement('input');
+    subjectField.type = 'text';
+    subjectField.required = true;
+    subjectField.name = `step_subject_${index}`;
+    subjectField.style.width = '100%';
+    wrapper.appendChild(subjectLabel);
+    wrapper.appendChild(subjectField);
+
+    const bodyLabel = document.createElement('label');
+    bodyLabel.textContent = 'Body (HTML):';
+    const bodyField = document.createElement('textarea');
+    bodyField.rows = 6;
+    bodyField.name = `step_body_${index}`;
+    bodyField.required = true;
+    bodyField.style.width = '100%';
+    wrapper.appendChild(bodyLabel);
+    wrapper.appendChild(bodyField);
+
+    const timingWrapper = document.createElement('div');
+    timingWrapper.style.marginTop = '0.5rem';
+
+    const timingLabel = document.createElement('label');
+    timingLabel.textContent = 'Schedule:';
+    timingWrapper.appendChild(timingLabel);
+
+    const typeSelect = document.createElement('select');
+    typeSelect.name = `step_type_${index}`;
+    const optionDaily = new Option('Every N days', 'days');
+    const optionMonthly = new Option('Monthly on a day', 'monthly');
+    typeSelect.add(optionDaily);
+    typeSelect.add(optionMonthly);
+    timingWrapper.appendChild(typeSelect);
+
+    const daysContainer = document.createElement('div');
+    daysContainer.style.marginTop = '0.25rem';
+    const daysLabel = document.createElement('label');
+    daysLabel.textContent = 'Days between previous send and this email:';
+    const daysSlider = document.createElement('input');
+    daysSlider.type = 'range';
+    daysSlider.min = '1';
+    daysSlider.max = '30';
+    daysSlider.value = '7';
+    daysSlider.name = `step_days_${index}`;
+    daysSlider.style.width = '200px';
+    const daysValue = document.createElement('span');
+    daysValue.textContent = '7 days';
+    daysSlider.addEventListener('input', () => {
+      daysValue.textContent = `${daysSlider.value} days`;
+    });
+    daysContainer.appendChild(daysLabel);
+    daysContainer.appendChild(document.createElement('br'));
+    daysContainer.appendChild(daysSlider);
+    daysContainer.appendChild(daysValue);
+
+    const monthlyContainer = document.createElement('div');
+    monthlyContainer.style.display = 'none';
+    monthlyContainer.style.marginTop = '0.25rem';
+    const monthlyLabel = document.createElement('label');
+    monthlyLabel.textContent = 'Send on day of month:';
+    const monthlyDay = document.createElement('input');
+    monthlyDay.type = 'number';
+    monthlyDay.min = '1';
+    monthlyDay.max = '28';
+    monthlyDay.value = '15';
+    monthlyDay.name = `step_dom_${index}`;
+    const monthIntervalLabel = document.createElement('label');
+    monthIntervalLabel.textContent = ' every N month(s)';
+    const monthInterval = document.createElement('input');
+    monthInterval.type = 'number';
+    monthInterval.min = '1';
+    monthInterval.max = '12';
+    monthInterval.value = '1';
+    monthInterval.name = `step_months_${index}`;
+    monthlyContainer.appendChild(monthlyLabel);
+    monthlyContainer.appendChild(monthlyDay);
+    monthlyContainer.appendChild(monthIntervalLabel);
+    monthlyContainer.appendChild(monthInterval);
+
+    typeSelect.addEventListener('change', () => {
+      const useDays = typeSelect.value === 'days';
+      daysContainer.style.display = useDays ? 'block' : 'none';
+      monthlyContainer.style.display = useDays ? 'none' : 'block';
+    });
+
+    timingWrapper.appendChild(daysContainer);
+    timingWrapper.appendChild(monthlyContainer);
+
+    wrapper.appendChild(timingWrapper);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = 'Remove this email';
+    removeBtn.style.marginTop = '0.5rem';
+    removeBtn.addEventListener('click', () => wrapper.remove());
+    wrapper.appendChild(removeBtn);
+
+    return wrapper;
+  }
+
+  addStepBtn.addEventListener('click', () => {
+    stepCounter += 1;
+    const card = createStepCard(stepCounter);
+    sequenceContainer.appendChild(card);
+  });
+
+  document.getElementById('compose-form').addEventListener('submit', (event) => {
+    const steps = [];
+    steps.push({
+      subject: subjectInput.value,
+      body: bodyInput.value,
+      offset_type: 'immediate',
+      offset_value: 0
+    });
+
+    sequenceContainer.querySelectorAll('.card').forEach((card) => {
+      const stepId = card.dataset.stepId;
+      const subject = card.querySelector(`input[name="step_subject_${stepId}"]`);
+      const body = card.querySelector(`textarea[name="step_body_${stepId}"]`);
+      const type = card.querySelector(`select[name="step_type_${stepId}"]`);
+      if (!subject || !body || !type) {
+        return;
+      }
+      const step = {
+        subject: subject.value,
+        body: body.value,
+      };
+      if (type.value === 'days') {
+        const slider = card.querySelector(`input[name="step_days_${stepId}"]`);
+        step.offset_type = 'days';
+        step.offset_value = slider ? parseInt(slider.value, 10) : 1;
+      } else {
+        const dom = card.querySelector(`input[name="step_dom_${stepId}"]`);
+        const months = card.querySelector(`input[name="step_months_${stepId}"]`);
+        step.offset_type = 'monthly';
+        step.day_of_month = dom ? parseInt(dom.value, 10) : 1;
+        step.month_interval = months ? parseInt(months.value, 10) : 1;
+      }
+      steps.push(step);
+    });
+
+    sequencePayload.value = JSON.stringify(steps);
+  });
+})();
+</script>
 {% endblock %}

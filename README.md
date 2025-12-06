@@ -30,6 +30,7 @@ A local-first email automation dashboard built with FastAPI, SQLAlchemy, APSched
    ```bash
    uvicorn protonmailer.main:app --host 127.0.0.1 --port 8000 --reload
    ```
+   - Stop the app cleanly with `Ctrl+C` in the same terminal. If you need to force-close from another shell, run `pkill -f "uvicorn protonmailer.main:app"` to terminate the server and in-process scheduler.
 4. **Adjust configuration as needed.** The setup script creates `.env` from `.env.example` when missing. Key settings:
    - `DATABASE_URL` (defaults to SQLite)
    - `APP_HOST` / `APP_PORT` (bind to `127.0.0.1` for local-only use)
@@ -43,6 +44,10 @@ A local-first email automation dashboard built with FastAPI, SQLAlchemy, APSched
 4. Create an email template, then build a campaign that targets specific tags.
 5. Let the in-process scheduler enqueue due campaign emails and send queued messages automatically.
 6. Monitor the dashboard for queued, sent, and failed items. The UI is intended for local use only; do not expose it to the internet without additional hardening.
+
+## Stopping the software from the terminal
+- Press `Ctrl+C` in the terminal running `uvicorn` to stop the web server and scheduler.
+- If the process was started elsewhere or detached, run `pkill -f "uvicorn protonmailer.main:app"` to force-stop all instances.
 
 ## Development helpers
 - Run the app: `make run`

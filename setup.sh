@@ -59,3 +59,4 @@ else
 fi
 
 echo "[setup] Run the app with: uvicorn protonmailer.main:app --host 127.0.0.1 --port 8000 --reload"
+echo "[setup] Stop the app with Ctrl+C in that terminal, or run: pkill -f 'uvicorn protonmailer.main:app'"
